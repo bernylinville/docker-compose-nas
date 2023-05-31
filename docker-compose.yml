@@ -1,7 +1,7 @@
 version: "3.9"
 services:
   traefik:
-    image: traefik:v2.9
+    image: traefik:v2.10
     container_name: traefik
     restart: always
     environment:
@@ -185,15 +185,14 @@ services:
       - PGID=${GROUP_ID}
       - TZ=${TIMEZONE}
       - JELLYFIN_PublishedServerUrl=${HOSTNAME}/jellyfin
+      - NVIDIA_VISIBLE_DEVICES=all
     volumes:
       - ./jellyfin:/config
       - ${DATA_ROOT}:/data
     ports:
       - "7359:7359/udp"
       - "1900:1900/udp"
-    devices:
-      - /dev/dri/renderD128:/dev/dri/renderD128
-      - /dev/dri/card0:/dev/dri/card0
+    runtime: nvidia
     restart: always
     labels:
       - traefik.enable=true
