@@ -9,14 +9,25 @@ services:
       - CLOUDFLARE_DNS_API_TOKEN=${CLOUDFLARE_DNS_API_TOKEN}
       - CLOUDFLARE_ZONE_API_TOKEN=${CLOUDFLARE_ZONE_API_TOKEN}
       - LETS_ENCRYPT_EMAIL=${LETS_ENCRYPT_EMAIL}
+      - TZ=${TIMEZONE}
     command:
+      - --global.sendanonymoususage=false
       - --providers.docker=true
+      - --providers.docker.watch=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.web-secure.address=:443
       - --entrypoints.web.http.redirections.entryPoint.to=web-secure
       - --entrypoints.web.http.redirections.entryPoint.scheme=https
       - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      - --entrypoints.web-secure.http.tls.certResolver=myresolver
+      - --entrypoints.web-secure.http.tls.domains.main=${HOSTNAME}
+      - --entrypoints.web-secure.http.tls.domains.sans=*.${HOSTNAME}
+      - --api=true
+      - --api.insecure=true
+      - --api.dashboard=true
+      - --api.debug=false
+      - --ping=true
       - --certificatesresolvers.myresolver.acme.dnschallenge=${DNS_CHALLENGE:-true}
       - --certificatesresolvers.myresolver.acme.dnschallenge.provider=${DNS_CHALLENGE_PROVIDER:-cloudflare}
       - --certificatesresolvers.myresolver.acme.caserver=${LETS_ENCRYPT_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
@@ -28,6 +39,14 @@ services:
     volumes:
       - ./letsencrypt:/letsencrypt
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider --proxy off localhost:8080/ping || exit 1"]
+      interval: 3s
+      retries: 12
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
   sonarr:
     image: lscr.io/linuxserver/sonarr
     container_name: sonarr
@@ -41,9 +60,11 @@ services:
     restart: always
     labels:
       - traefik.enable=true
-      - traefik.http.routers.sonarr.rule=(Host(`${HOSTNAME}`) && PathPrefix(`/sonarr`))
+      - traefik.http.routers.sonarr.rule=Host(`sonarr.${HOSTNAME}`)
       - traefik.http.routers.sonarr.tls=true
       - traefik.http.routers.sonarr.tls.certresolver=myresolver
+      - traefik.http.routers.sonarr.tls.domains[0].main=${HOSTNAME}
+      - traefik.http.routers.sonarr.tls.domains[0].sans=*.${HOSTNAME}
       - traefik.http.services.sonarr.loadbalancer.server.port=8989
       - homepage.group=Media
       - homepage.name=Sonarr
@@ -67,9 +88,11 @@ services:
     restart: always
     labels:
       - traefik.enable=true
-      - traefik.http.routers.radarr.rule=(Host(`${HOSTNAME}`) && PathPrefix(`/radarr`))
+      - traefik.http.routers.radarr.rule=Host(`radarr.${HOSTNAME}`)
       - traefik.http.routers.radarr.tls=true
       - traefik.http.routers.radarr.tls.certresolver=myresolver
+      - traefik.http.routers.radarr.tls.domains[0].main=${HOSTNAME}
+      - traefik.http.routers.radarr.tls.domains[0].sans=*.${HOSTNAME}
       - traefik.http.services.radarr.loadbalancer.server.port=7878
       - homepage.group=Media
       - homepage.name=Radarr
@@ -92,9 +115,11 @@ services:
     restart: always
     labels:
       - traefik.enable=true
-      - traefik.http.routers.prowlarr.rule=(Host(`${HOSTNAME}`) && PathPrefix(`/prowlarr`))
+      - traefik.http.routers.prowlarr.rule=Host(`prowlarr.${HOSTNAME}`)
       - traefik.http.routers.prowlarr.tls=true
       - traefik.http.routers.prowlarr.tls.certresolver=myresolver
+      - traefik.http.routers.prowlarr.tls.domains[0].main=${HOSTNAME}
+      - traefik.http.routers.prowlarr.tls.domains[0].sans=*.${HOSTNAME}
       - traefik.http.services.prowlarr.loadbalancer.server.port=9696
       - homepage.group=Download
       - homepage.name=Prowlarr
@@ -106,7 +131,7 @@ services:
       - homepage.widget.url=http://prowlarr:9696/prowlarr
       - homepage.widget.key=${PROWLARR_API_KEY}
   qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:libtorrentv1
+    image: lscr.io/linuxserver/qbittorrent:latest
     container_name: qbittorrent
     environment:
       - PUID=${USER_ID}
@@ -116,25 +141,18 @@ services:
     volumes:
       - ./qbittorrent:/config
       - ${DOWNLOAD_ROOT}:/data/torrents
+    ports:
+      - "16881:16881/udp"
+      - "16881:16881"
     restart: always
-    network_mode: "service:vpn"
-    depends_on:
-      vpn:
-        condition: service_healthy
     labels:
       - traefik.enable=true
-      - traefik.http.routers.qbittorrent.rule=(Host(`${HOSTNAME}`) && PathPrefix(`/qbittorrent`))
+      - traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.${HOSTNAME}`)
       - traefik.http.routers.qbittorrent.tls=true
       - traefik.http.routers.qbittorrent.tls.certresolver=myresolver
+      - traefik.http.routers.qbittorrent.tls.domains[0].main=${HOSTNAME}
+      - traefik.http.routers.qbittorrent.tls.domains[0].sans=*.${HOSTNAME}
       - traefik.http.services.qbittorrent.loadbalancer.server.port=8080
-      - traefik.http.routers.qbittorrent.middlewares=qbittorrent-strip-slash,qbittorrent-stripprefix
-      # https://github.com/qbittorrent/qBittorrent/issues/5693#issuecomment-552146296
-      - traefik.http.middlewares.qbittorrent-stripprefix.stripPrefix.prefixes=/qbittorrent
-      # https://community.traefik.io/t/middleware-to-add-the-if-needed/1895/19
-      - traefik.http.middlewares.qbittorrent-strip-slash.redirectregex.regex=(^.*\/qbittorrent$$)
-      - traefik.http.middlewares.qbittorrent-strip-slash.redirectregex.replacement=$$1/
-      - traefik.http.middlewares.qbittorrent-strip-slash.redirectregex.permanent=false
-      #- com.centurylinklabs.watchtower.depends-on=/vpn
       - homepage.group=Download
       - homepage.name=qBittorrent
       - homepage.icon=qbittorrent.png
@@ -142,41 +160,42 @@ services:
       - homepage.description=Bittorrent client
       - homepage.weight=5
       - homepage.widget.type=qbittorrent
-      - homepage.widget.url=http://vpn:8080
+      - homepage.widget.url=http://qbittorrent:8080
       - homepage.widget.username=admin
       - homepage.widget.password=adminadmin
-  vpn:
-    image: thrnz/docker-wireguard-pia
-    container_name: vpn
-    volumes:
-      - ./pia:/pia
-      - ./pia-shared:/pia-shared
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
+  qbittorrentee:
+    image: superng6/qbittorrentee:latest
+    container_name: qbittorrentee
     environment:
-      - LOC=${PIA_LOCATION}
-      - USER=${PIA_USER}
-      - PASS=${PIA_PASS}
-      - LOCAL_NETWORK=${PIA_LOCAL_NETWORK}
-      - PORT_FORWARDING=1
-      - PORT_PERSIST=1
-      - PORT_SCRIPT=/pia-shared/portupdate-qbittorrent.sh
-      - EXIT_ON_FATAL=1
-    sysctls:
-      - net.ipv4.conf.all.src_valid_mark=1
-      - net.ipv6.conf.default.disable_ipv6=1
-      - net.ipv6.conf.all.disable_ipv6=1
-      - net.ipv6.conf.lo.disable_ipv6=1
-    healthcheck:
-      test: ping -c 1 www.google.com || exit 1
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+      - WEBUI_PORT=8080
+    volumes:
+      - ./qbittorrentee:/config
+      - ${DOWNLOAD_ROOT}:/data/torrents
+    ports:
+      - "16882:16882/udp"
+      - "16882:16882"
     restart: always
     labels:
-      # network mode is not supported: https://github.com/containrrr/watchtower/issues/1286#issuecomment-1214291660
-      - com.centurylinklabs.watchtower.enable=false
+      - traefik.enable=true
+      - traefik.http.routers.qbittorrentee.rule=Host(`qbittorrentee.${HOSTNAME}`)
+      - traefik.http.routers.qbittorrentee.tls=true
+      - traefik.http.routers.qbittorrentee.tls.certresolver=myresolver
+      - traefik.http.routers.qbittorrentee.tls.domains[0].main=${HOSTNAME}
+      - traefik.http.routers.qbittorrentee.tls.domains[0].sans=*.${HOSTNAME}
+      - traefik.http.services.qbittorrentee.loadbalancer.server.port=8080
+      - homepage.group=Download
+      - homepage.name=qbittorrentee
+      - homepage.icon=qbittorrent.png
+      - homepage.href=/qbittorrentee
+      - homepage.description=Bittorrent client
+      - homepage.weight=5
+      - homepage.widget.type=qbittorrent
+      - homepage.widget.url=http://qbittorrentee:8080
+      - homepage.widget.username=admin
+      - homepage.widget.password=adminadmin
   jellyfin:
     image: lscr.io/linuxserver/jellyfin
     container_name: jellyfin
@@ -196,9 +215,11 @@ services:
     restart: always
     labels:
       - traefik.enable=true
-      - traefik.http.routers.jellyfin.rule=(Host(`${HOSTNAME}`) && PathPrefix(`/jellyfin`))
+      - traefik.http.routers.jellyfin.rule=Host(`jellyfin.${HOSTNAME}`)
       - traefik.http.routers.jellyfin.tls=true
       - traefik.http.routers.jellyfin.tls.certresolver=myresolver
+      - traefik.http.routers.jellyfin.tls.domains[0].main=${HOSTNAME}
+      - traefik.http.routers.jellyfin.tls.domains[0].sans=*.${HOSTNAME}
       - traefik.http.services.jellyfin.loadbalancer.server.port=8096
       - homepage.group=Media
       - homepage.name=Jellyfin
@@ -221,6 +242,7 @@ services:
       - HOMEPAGE_VAR_WEATHER_LONG=${HOMEPAGE_VAR_WEATHER_LONG}
       - HOMEPAGE_VAR_WEATHER_TIME=${TIMEZONE}
       - HOMEPAGE_VAR_WEATHER_UNIT=${HOMEPAGE_VAR_WEATHER_UNIT}
+      - TZ=${TIMEZONE}
     volumes:
       - ./homepage:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -229,9 +251,11 @@ services:
     command: [sh, -c, "cp -n /app/config/tpl/*.yaml /app/config && node server.js"]
     labels:
       - traefik.enable=true
-      - traefik.http.routers.homepage.rule=(Host(`${HOSTNAME}`) && PathPrefix(`/`))
+      - traefik.http.routers.homepage.rule=Host(`homepage.${HOSTNAME}`)
       - traefik.http.routers.homepage.tls=true
       - traefik.http.routers.homepage.tls.certresolver=myresolver
+      - traefik.http.routers.homepage.tls.domains[0].main=${HOSTNAME}
+      - traefik.http.routers.homepage.tls.domains[0].sans=*.${HOSTNAME}
       - traefik.http.services.homepage.loadbalancer.server.port=3000
   watchtower:
     image: containrrr/watchtower
@@ -239,8 +263,37 @@ services:
     restart: always
     environment:
       - WATCHTOWER_CLEANUP=true
+      - TZ=${TIMEZONE}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    environment:
+      - WEBSOCKET_ENABLED=true  # Enable WebSocket notifications.
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${VW_DATA}:/data
+    restart: always
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.vaultwarden.rule=Host(`vaultwarden.${HOSTNAME}`)
+      - traefik.http.routers.vaultwarden.tls=true
+      - traefik.http.routers.vaultwarden.tls.certresolver=myresolver
+      - traefik.http.routers.vaultwarden.tls.domains[0].main=${HOSTNAME}
+      - traefik.http.routers.vaultwarden.tls.domains[0].sans=*.${HOSTNAME}
+      - traefik.http.services.vaultwarden.loadbalancer.server.port=80
+      # - homepage.group=Media
+      # - homepage.name=vaultwarden
+      # - homepage.icon=vaultwarden.png
+      # - homepage.href=/vaultwarden
+      # - homepage.description=Media server
+      # - homepage.weight=3
+      # - homepage.widget.type=vaultwarden
+      # - homepage.widget.url=http://vaultwarden/vaultwarden
+      # - homepage.widget.key=${vaultwarden_API_KEY}
 
 networks:
   default:

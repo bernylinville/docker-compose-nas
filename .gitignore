@@ -11,6 +11,8 @@ docker-compose.override.yml
 !/prowlarr/.gitkeep
 /qbittorrent
 !/qbittorrent/.gitkeep
+/qbittorrentee
+!/qbittorrentee/.gitkeep
 /pia
 !/pia/.gitkeep
 /pia-shared
