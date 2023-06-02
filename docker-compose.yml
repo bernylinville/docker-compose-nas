@@ -335,6 +335,38 @@ services:
       options:
         max-size: "1m"
 
+  freshrss:
+    image: lscr.io/linuxserver/freshrss:latest
+    container_name: freshrss
+    restart: always
+    volumes:
+      - ${FRESHRSS_DATA}:/var/www/FreshRSS/data
+      - ${FRESHRSS_EXTENSIONS}:/var/www/FreshRSS/extensions
+    environment:
+      TZ: ${TIMEZONE}
+      CRON_MIN: '2,32'
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.freshrss.rule=Host(`freshrss.${HOSTNAME}`)
+      - traefik.http.routers.freshrss.tls=true
+      - traefik.http.routers.freshrss.tls.certresolver=myresolver
+      - traefik.http.routers.freshrss.tls.domains[0].main=${HOSTNAME}
+      - traefik.http.routers.freshrss.tls.domains[0].sans=*.${HOSTNAME}
+      - traefik.http.services.freshrss.loadbalancer.server.port=80
+      # - homepage.group=Media
+      # - homepage.name=freshrss
+      # - homepage.icon=freshrss.png
+      # - homepage.href=/freshrss
+      # - homepage.description=Media server
+      # - homepage.weight=3
+      # - homepage.widget.type=freshrss
+      # - homepage.widget.url=http://freshrss/freshrss
+      # - homepage.widget.key=${freshrss_API_KEY}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
 networks:
   default:
     name: docker-compose-nas
