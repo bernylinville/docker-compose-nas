@@ -393,6 +393,10 @@ services:
       - traefik.http.routers.netdata.tls.domains[0].main=${HOSTNAME}
       - traefik.http.routers.netdata.tls.domains[0].sans=*.${HOSTNAME}
       - traefik.http.services.netdata.loadbalancer.server.port=19999
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
 
   memos:
     image: neosmemo/memos:latest
@@ -404,6 +408,31 @@ services:
       - ${MEMOS_DATA}:/var/opt/memos
     ports:
       - 35230:5230
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+
+  wordpress:
+    image: wordpress:latest
+    container_name: wordpress
+    ports:
+      - 36728:80
+    restart: always
+    environment:
+      - PUID=${USER_ID}
+      - PGID=${GROUP_ID}
+      - TZ=${TIMEZONE}
+      - WORDPRESS_DB_HOST=${MYSQL_HOST}
+      - WORDPRESS_DB_USER=${MYSQL_USER}
+      - WORDPRESS_DB_PASSWORD=${MYSQL_PASSWORD}
+      - WORDPRESS_DB_NAME=wordpress
+    volumes:
+      - ${WP_DATA}:/var/www/html:rw
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
 
 networks:
   default:
