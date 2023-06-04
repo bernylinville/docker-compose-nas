@@ -1,4 +1,4 @@
-version: "3.9"
+version: "3"
 services:
   traefik:
     image: traefik:v2.10
@@ -340,9 +340,11 @@ services:
     container_name: freshrss
     restart: always
     volumes:
-      - ${FRESHRSS_DATA}:/var/www/FreshRSS/data
-      - ${FRESHRSS_EXTENSIONS}:/var/www/FreshRSS/extensions
+      - ${FRESHRSS_DATA}:/var/www/FreshRSS/data:rw
+      - ${FRESHRSS_EXTENSIONS}:/var/www/FreshRSS/extensions:rw
     environment:
+      PUID: ${USER_ID}
+      PGID: ${GROUP_ID}
       TZ: ${TIMEZONE}
       CRON_MIN: '2,32'
     labels:
@@ -366,6 +368,42 @@ services:
       driver: "json-file"
       options:
         max-size: "1m"
+
+  netdata:
+    image: netdata/netdata:latest
+    container_name: netdata
+    hostname: y9000p.devopsthink.org # set to fqdn of host
+    restart: unless-stopped
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.netdata.rule=Host(`netdata.${HOSTNAME}`)
+      - traefik.http.routers.netdata.tls=true
+      - traefik.http.routers.netdata.tls.certresolver=myresolver
+      - traefik.http.routers.netdata.tls.domains[0].main=${HOSTNAME}
+      - traefik.http.routers.netdata.tls.domains[0].sans=*.${HOSTNAME}
+      - traefik.http.services.netdata.loadbalancer.server.port=19999
+
+  memos:
+    image: neosmemo/memos:latest
+    container_name: memos
+    restart: always
+    environment:
+      - TZ=${TIMEZONE}
+    volumes:
+      - ${MEMOS_DATA}:/var/opt/memos
+    ports:
+      - 35230:5230
 
 networks:
   default:
